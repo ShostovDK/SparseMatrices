@@ -1,43 +1,101 @@
-﻿import os
+﻿import numpy as np
 import scipy.sparse as sparse
-import scipy.sparse.linalg as splinalg
-import psutil
-import numpy as np
 
-def generate_sss_matrix(n, density):
-    """
-    Генерирует разреженную симметричную матрицу в формате SSS.
+def generate_symmetric_sparse_matrix(size, density, diag_val=None):
+    # Генерируем симметричный набор индексов
+    i, j = np.triu_indices(size, k=1)
+    # Выбираем случайный поднабор индексов в соответствии с заданной плотностью
+    num_entries = int(density * size * (size - 1) / 2)
+    indices = np.random.choice(len(i), size=num_entries, replace=False)
+    i = i[indices]
+    j = j[indices]
+    # Генерируем случайные данные для выбранных индексов
+    data = np.random.randint(1, 10, len(i)) 
+    # Создаем разреженную матрицу из данных
+    matrix = sparse.csr_matrix((data, (i, j)), shape=(size, size))
+    # Если задано значение диагонали, устанавливаем его
+    if diag_val is not None:
+        matrix.setdiag(diag_val * np.ones(size))
+    # Делаем матрицу симметричной
+    matrix += matrix.T
+    # Генерируем случайное целое число для диагонали и устанавливаем его, если значение не было задано
+    if diag_val is None:
+        diag_val = np.random.randint(1, 10)
+        matrix.setdiag(diag_val * np.ones(size))
+    return matrix
 
-    :param n: размер матрицы
-    :param density: плотность матрицы
-    :return: сгенерированная матрица в формате SSS
-    """
-    mat = sparse.random(n, n, density=density, format='coo')
-    mat = mat + mat.transpose()  # делаем матрицу симметричной
-    mat_coo = mat.tocoo()
-    mat_data = mat_coo.data[mat_coo.row != mat_coo.col]
-    mat_rows = mat_coo.row[mat_coo.row != mat_coo.col]
-    mat_cols = mat_coo.col[mat_coo.row != mat_coo.col]
-    mat_sss = sparse.coo_matrix((mat_data, (mat_rows, mat_cols)), shape=(n, n))
-    mat_sss.setdiag(mat.diagonal())
-    return mat_sss
+def input_symmetric_matrix(size):
+    # Создаем пустую симметричную матрицу
+    matrix = np.zeros((size, size))
+    for i in range(size):
+        for j in range(i, size):
+            while True:
+                try:
+                    value = int(input(f"Enter value for matrix[{i}][{j}] (matrix[{j}][{i}] will be the same): "))
+                    break
+                except ValueError:
+                    print("Invalid input. Please enter an integer.")
+            matrix[i][j] = value
+            matrix[j][i] = value
+    return sparse.csr_matrix(matrix)
 
-# Считываем размер и плотность матриц с клавиатуры
-n = int(input("Введите размер матриц: "))
-density = float(input("Введите плотность матриц: "))
+def main():
+    # Спрашиваем у пользователя размер и плотность матриц
+    while True:
+        try:
+            size = int(input("Enter the size of the matrices: "))
+            if size > 0:
+                break
+            else:
+                print("Invalid input. Please enter a positive integer.")
+        except ValueError:
+            print("Invalid input. Please enter an integer.")
 
-# Генерируем две разреженные симметричные матрицы в формате SSS
-mat1 = generate_sss_matrix(n, density)
-mat2 = generate_sss_matrix(n, density)
+    while True:
+        try:
+            density = float(input("Enter the density of the matrices (between 0 and 1): "))
+            if 0 <= density <= 1:
+                break
+            else:
+                print("Invalid input. Please enter a value between 0 and 1.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
 
-# Перемножаем матрицы с измерением используемой памяти
-start_mem = psutil.Process(os.getpid()).memory_info().rss
-mat3 = mat1 * mat2
-end_mem = psutil.Process(os.getpid()).memory_info().rss
-mem_usage = (end_mem - start_mem) / 1024 / 1024
+    # Спрашиваем у пользователя, хочет ли он генерировать или вводить матрицы
+    while True:
+        generate_input = input("Do you want to generate or input the matrices? (g/i): ").lower()
+        if generate_input in ["g", "i"]:
+            break
+        else:
+            print("Invalid input. Please enter 'g' or 'i'.")
 
-print(f"Использовано памяти: {mem_usage:.2f} МБ")
+    if generate_input == "g":
+        matrix1 = generate_symmetric_sparse_matrix(size, density)
+        matrix2 = generate_symmetric_sparse_matrix(size, density, matrix1.diagonal()[0])
+    elif generate_input == "i":
+        matrix1 = input_symmetric_matrix(size)
+        while True:
+            matrix2_input = input("Do you want to input the second matrix or generate it with the same diagonal as the first matrix? (i/g): ").lower()
+            if matrix2_input in ["i", "g"]:
+                break
+            else:
+                print("Invalid input. Please enter 'i' or 'g'.")
+        if matrix2_input == "i":
+            matrix2 = input_symmetric_matrix(size)
+        else:
+            matrix2 = generate_symmetric_sparse_matrix(size, density, matrix1.diagonal()[0])
 
-# Преобразуем результат в формат CSR и выводим его
-mat3_csr = mat3.tocsr()
-print(mat3_csr)
+    result = matrix1.dot(matrix2)
+    # Выводим матрицы в формате SSS без десятичной точки
+    print("Matrix 1 in SSS format:")
+    print(np.array2string(matrix1.toarray(), formatter={'float_kind':lambda x: "%d" % x}))
+    print("Matrix 2 in SSS format:")
+    print(np.array2string(matrix2.toarray(), formatter={'float_kind':lambda x: "%d" % x}))
+    print("Result in SSS format:")
+    print(np.array2string(result.toarray(), formatter={'float_kind':lambda x: "%d" % x}))
+    # Выводим матрицы в формате CSR 
+    print("Result in CSR format:")
+    print(result)
+
+if __name__ == "__main__":
+    main()
